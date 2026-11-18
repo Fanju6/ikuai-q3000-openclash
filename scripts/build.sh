@@ -28,24 +28,37 @@ echo "::endgroup::"
 echo "::group::Configure only IK-Q3000 and required packages"
 cp defconfig/mt7981-ax3000.config .config
 
-# The upstream default builds several devices. Explicitly select only IK-Q3000.
+# The MT798x fork stores scripts/config as a directory, not the usual
+# OpenWrt scripts/config helper. Edit the Kconfig file directly instead.
+set_config() {
+  key="$1"
+  state="$2"
+  sed -i -e "/^CONFIG_$key=/d" -e "/^# CONFIG_$key is not set$/d" .config
+  if [ "$state" = "y" ]; then
+    printf 'CONFIG_%s=y\n' "$key" >> .config
+  else
+    printf '# CONFIG_%s is not set\n' "$key" >> .config
+  fi
+}
+
+# The upstream default builds multiple devices. Select only IK-Q3000.
 while IFS= read -r config_line; do
   symbol=$(printf '%s' "$config_line" | cut -d= -f1 | cut -c8-)
-  ./scripts/config -d "$symbol"
+  set_config "$symbol" n
 done < <(grep '^CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_.*=y$' .config || true)
 
-./scripts/config -e TARGET_MULTI_PROFILE
-./scripts/config -e TARGET_DEVICE_mediatek_mt7981_DEVICE_ikuai_q3000
+set_config TARGET_MULTI_PROFILE y
+set_config TARGET_DEVICE_mediatek_mt7981_DEVICE_ikuai_q3000 y
 
 # dnsmasq-full replaces the simpler dnsmasq.
-./scripts/config -d PACKAGE_dnsmasq
+set_config PACKAGE_dnsmasq n
 for pkg in \
   luci luci-compat luci-app-openclash \
   dnsmasq-full bash curl ca-bundle ip-full \
   ruby ruby-yaml unzip \
   iptables ipset iptables-mod-tproxy iptables-mod-extra \
   kmod-tun kmod-ipt-tproxy kmod-ipt-nat kmod-inet-diag; do
-  ./scripts/config -e "PACKAGE_$pkg"
+  set_config "PACKAGE_$pkg" y
 done
 
 make defconfig
