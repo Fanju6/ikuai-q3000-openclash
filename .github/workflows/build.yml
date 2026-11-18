@@ -1,0 +1,63 @@
+name: Build IK-Q3000 firmware
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build.yml"
+      - "scripts/build.sh"
+      - "README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ImmortalWrt MT7981 / iKuai Q3000
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    container:
+      image: ubuntu:20.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        TZ: Etc/UTC
+    steps:
+      - name: Checkout build configuration
+        uses: actions/checkout@v4
+
+      - name: Install Ubuntu 20.04 build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential git ca-certificates curl wget file \
+            gawk gettext flex bison autoconf automake autopoint \
+            gcc-multilib g++-multilib libtool libncurses5-dev \
+            libssl-dev zlib1g-dev unzip zip xz-utils bzip2 cpio \
+            rsync subversion swig python2.7 python3 python3-distutils \
+            python3-pip libelf-dev libglib2.0-dev libgmp3-dev \
+            libmpc-dev libmpfr-dev libreadline-dev pkg-config \
+            cmake ninja-build help2man patch texinfo time perl \
+            scons squashfs-tools gperf
+          useradd --create-home --shell /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Build Q3000 firmware with OpenClash
+        shell: bash
+        run: |
+          set -euxo pipefail
+          runuser -u builder -- env HOME=/home/builder GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash "$GITHUB_WORKSPACE/scripts/build.sh"
+
+      - name: Upload build logs and firmware
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ikuai-q3000-openclash-build
+          path: |
+            artifacts/
+            work/immortalwrt/bin/targets/mediatek/mt7981/*.manifest
+          if-no-files-found: warn
+          retention-days: 7
